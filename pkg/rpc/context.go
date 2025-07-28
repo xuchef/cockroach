@@ -1389,12 +1389,12 @@ func (rpcCtx *Context) GRPCDialOptions(
 		// See the explanation on loopbackDialFn for an explanation about this.
 		transport = loopbackTransport
 	}
-	return rpcCtx.grpcDialOptionsInternal(ctx, target, class, transport)
+	return rpcCtx.grpcDialOptionsInternal(ctx, target, class, transport, nil)
 }
 
 // grpcDialOptions produces dial options suitable for connecting to the given target and class.
 func (rpcCtx *Context) grpcDialOptionsInternal(
-	ctx context.Context, target string, class rpcbase.ConnectionClass, transport transportType,
+	ctx context.Context, target string, class rpcbase.ConnectionClass, transport transportType, dial dialerFunc,
 ) ([]grpc.DialOption, error) {
 	dialOpts, err := rpcCtx.dialOptsCommon(ctx, target, class)
 	if err != nil {
@@ -1403,7 +1403,7 @@ func (rpcCtx *Context) grpcDialOptionsInternal(
 
 	switch transport {
 	case tcpTransport:
-		netOpts, err := rpcCtx.dialOptsNetwork(ctx, target, class)
+		netOpts, err := rpcCtx.dialOptsNetwork(ctx, target, class, dial)
 		if err != nil {
 			return nil, err
 		}
@@ -1551,7 +1551,7 @@ func (t *statsTracker) HandleConn(ctx context.Context, s stats.ConnStats) {
 // dialOptsNetwork compute options used only for over-the-network RPC
 // connections.
 func (rpcCtx *Context) dialOptsNetwork(
-	ctx context.Context, target string, class rpcbase.ConnectionClass,
+	ctx context.Context, target string, class rpcbase.ConnectionClass, dial dialerFunc,
 ) ([]grpc.DialOption, error) {
 	dialOpts, err := rpcCtx.dialOptsNetworkCredentials()
 	if err != nil {
@@ -1622,23 +1622,8 @@ func (rpcCtx *Context) dialOptsNetwork(
 		}
 	}
 
-	// Set up the dialer. Like for the stream client interceptor, we cannot
-	// do this earlier because it is sensitive to the actual target address,
-	// which is only definitely provided during dial.
-	dialer := onlyOnceDialer{}
-	dialerFunc := dialer.dial
-	if rpcCtx.Knobs.InjectedLatencyOracle != nil {
-		latency := rpcCtx.Knobs.InjectedLatencyOracle.GetLatency(target)
-		log.VEventf(ctx, 1, "connecting with simulated latency %dms",
-			latency)
-		dialer := artificialLatencyDialer{
-			dialerFunc: dialerFunc,
-			latency:    latency,
-			enabled:    rpcCtx.Knobs.InjectedLatencyEnabled,
-		}
-		dialerFunc = dialer.dial
-	}
-	dialOpts = append(dialOpts, grpc.WithContextDialer(dialerFunc))
+	// Set the dialer function.
+	dialOpts = append(dialOpts, grpc.WithContextDialer(dial))
 
 	// Don't retry on dial errors either, otherwise the onlyOnceDialer will get
 	// into a bad state for connection errors.
@@ -1981,6 +1966,7 @@ func (rpcCtx *Context) grpcDialRaw(
 	ctx context.Context,
 	target string,
 	class rpcbase.ConnectionClass,
+	dial dialerFunc,
 	additionalOpts ...grpc.DialOption,
 ) (*grpc.ClientConn, error) {
 	transport := tcpTransport
@@ -1988,7 +1974,7 @@ func (rpcCtx *Context) grpcDialRaw(
 		// See the explanation on loopbackDialFn for an explanation about this.
 		transport = loopbackTransport
 	}
-	dialOpts, err := rpcCtx.grpcDialOptionsInternal(ctx, target, class, transport)
+	dialOpts, err := rpcCtx.grpcDialOptionsInternal(ctx, target, class, transport, dial)
 	if err != nil {
 		return nil, err
 	}
@@ -2189,7 +2175,7 @@ type Dialbacker interface {
 	GRPCUnvalidatedDial(string, roachpb.Locality) *GRPCConnection
 	GRPCDialNode(string, roachpb.NodeID, roachpb.Locality, rpcbase.ConnectionClass) *GRPCConnection
 	grpcDialRaw(
-		context.Context, string, rpcbase.ConnectionClass, ...grpc.DialOption,
+		context.Context, string, rpcbase.ConnectionClass, dialerFunc, ...grpc.DialOption,
 	) (*grpc.ClientConn, error)
 	wrapCtx(
 		ctx context.Context, target string, remoteNodeID roachpb.NodeID, class rpcbase.ConnectionClass,
@@ -2265,7 +2251,8 @@ func VerifyDialback(
 		// A throwaway connection keeps it simple.
 		ctx := rpcCtx.wrapCtx(ctx, target, request.OriginNodeID, rpcbase.SystemClass)
 		ctx = logtags.AddTag(ctx, "dialback", nil)
-		conn, err := rpcCtx.grpcDialRaw(ctx, target, rpcbase.SystemClass, grpc.WithBlock())
+		dialer := onlyOnceDialer{}
+		conn, err := rpcCtx.grpcDialRaw(ctx, target, rpcbase.SystemClass, dialer.dial, grpc.WithBlock())
 		if conn != nil { // NB: the nil check simplifies mocking in TestVerifyDialback
 			_ = conn.Close() // nolint:grpcconnclose
 		}

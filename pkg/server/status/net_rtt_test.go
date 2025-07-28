@@ -112,6 +112,13 @@ func TestRTTLinux(t *testing.T) {
 					require.NoError(t, err)
 					require.NotNil(t, rttInfo)
 
+					rttInfo2, err := getRTTInfo2(conn)
+					require.NoError(t, err)
+					require.NotNil(t, rttInfo2)
+
+					require.InDelta(t, rttInfo.RTT.Microseconds(), rttInfo2.RTT.Microseconds(), 2)
+					require.InDelta(t, rttInfo.RTTVar.Microseconds(), rttInfo2.RTTVar.Microseconds(), 2)
+
 					pings := pingPongCounter.Load()
 					fmt.Printf("Iteration %d: RTT=%s, RTTVar=%s, Ping-Pongs=%d\n", i+1, rttInfo.RTT, rttInfo.RTTVar, pings)
 					// On a local connection, RTT should be very small but non-zero.

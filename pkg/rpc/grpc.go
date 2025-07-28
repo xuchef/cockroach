@@ -7,10 +7,12 @@ package rpc
 
 import (
 	"context"
+	"net"
 
 	"github.com/cockroachdb/cockroach/pkg/kv/kvpb"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
 	"github.com/cockroachdb/cockroach/pkg/rpc/rpcbase"
+	"github.com/cockroachdb/cockroach/pkg/util/log"
 	"github.com/cockroachdb/cockroach/pkg/util/stop"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
@@ -61,9 +63,32 @@ func newGRPCPeerOptions(
 		peers:    &rpcCtx.peers,
 		connOptions: &ConnectionOptions[*grpc.ClientConn]{
 			dial: func(ctx context.Context, target string, class rpcbase.ConnectionClass) (*grpc.ClientConn, error) {
+				// Set up the dialer. Like for the stream client interceptor, we cannot
+				// do this earlier because it is sensitive to the actual target address,
+				// which is only definitely provided during dial.
+				dialer := onlyOnceDialer{}
+				dialerFunc := func(ctx context.Context, addr string) (net.Conn, error) {
+					conn, err := dialer.dial(ctx, addr)
+					if err != nil {
+						return nil, err
+					}
+					wrapped := NewWrappedConn(conn, &pm)
+					return wrapped, nil
+				}
+				if rpcCtx.Knobs.InjectedLatencyOracle != nil {
+					latency := rpcCtx.Knobs.InjectedLatencyOracle.GetLatency(target)
+					log.VEventf(ctx, 1, "connecting with simulated latency %dms",
+						latency)
+					dialer := artificialLatencyDialer{
+						dialerFunc: dialerFunc,
+						latency:    latency,
+						enabled:    rpcCtx.Knobs.InjectedLatencyEnabled,
+					}
+					dialerFunc = dialer.dial
+				}
 				additionalDialOpts := []grpc.DialOption{grpc.WithStatsHandler(&statsTracker{lm})}
 				additionalDialOpts = append(additionalDialOpts, rpcCtx.testingDialOpts...)
-				return rpcCtx.grpcDialRaw(ctx, target, class, additionalDialOpts...)
+				return rpcCtx.grpcDialRaw(ctx, target, class, dialerFunc, additionalDialOpts...)
 			},
 			connEquals: func(a, b *grpc.ClientConn) bool {
 				return a == b

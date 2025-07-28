@@ -3,8 +3,11 @@
 package status
 
 import (
+	stdnet "net"
+	"syscall"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/shirou/gopsutil/v3/net"
 	"golang.org/x/sys/unix"
 )
@@ -29,6 +32,38 @@ func getRTTInfo(conn net.ConnectionStat) (*RTTInfo, error) {
 
 	rttInfo := &RTTInfo{
 		// RTT and RTTVar are in microseconds.
+		RTT:    time.Duration(info.Rtt) * time.Microsecond,
+		RTTVar: time.Duration(info.Rttvar) * time.Microsecond,
+	}
+
+	return rttInfo, nil
+}
+
+func getRTTInfo2(conn stdnet.Conn) (*RTTInfo, error) {
+	syscallConn, ok := conn.(syscall.Conn)
+	if !ok {
+		return nil, errors.New("connection is not a syscall.Conn")
+	}
+
+	rawConn, err := syscallConn.SyscallConn()
+	if err != nil {
+		return nil, err
+	}
+
+	var info *unix.TCPInfo
+	var syscallErr error
+
+	err = rawConn.Control(func(fd uintptr) {
+		info, syscallErr = unix.GetsockoptTCPInfo(int(fd), unix.IPPROTO_TCP, unix.TCP_INFO)
+	})
+	if err != nil {
+		return nil, err
+	}
+	if syscallErr != nil {
+		return nil, syscallErr
+	}
+
+	rttInfo := &RTTInfo{
 		RTT:    time.Duration(info.Rtt) * time.Microsecond,
 		RTTVar: time.Duration(info.Rttvar) * time.Microsecond,
 	}

@@ -58,6 +58,8 @@ func (p *peer[Conn]) setUnhealthyLocked(connUnhealthyFor int64) {
 	p.ConnectionHealthyFor.Update(0)
 	p.ConnectionUnhealthyFor.Update(connUnhealthyFor)
 	p.AvgRoundTripLatency.Update(0)
+	p.TCPRTT.Update(0)
+	p.TCPRTTVar.Update(0)
 
 	switch p.mu.peerStatus {
 	case peerStatusHealthy:
@@ -77,6 +79,8 @@ func (p *peer[Conn]) setInactiveLocked() {
 	p.ConnectionHealthyFor.Update(0)
 	p.ConnectionUnhealthyFor.Update(0)
 	p.AvgRoundTripLatency.Update(0)
+	p.TCPRTT.Update(0)
+	p.TCPRTTVar.Update(0)
 
 	switch p.mu.peerStatus {
 	case peerStatusHealthy:

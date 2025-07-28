@@ -27,6 +27,7 @@ go_library(
         "snappy.go",
         "stream_pool.go",
         "tls.go",
+        "wrapped_conn.go",
     ],
     embed = [":rpc_go_proto"],
     importpath = "github.com/cockroachdb/cockroach/pkg/rpc",
@@ -99,6 +100,7 @@ go_library(
         "@org_golang_google_grpc//peer",
         "@org_golang_google_grpc//stats",
         "@org_golang_google_grpc//status",
+        "@org_golang_x_sys//unix",
     ],
 )
 
@@ -121,6 +123,7 @@ go_test(
         "snappy_test.go",
         "stream_pool_test.go",
         "tls_test.go",
+        "wrapped_conn_test.go",
     ],
     data = glob(["testdata/**"]),
     embed = [":rpc"],

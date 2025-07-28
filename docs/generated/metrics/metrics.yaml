@@ -137,7 +137,7 @@ layers:
       unit: NANOSECONDS
       aggregation: AVG
       derivative: NONE
-      how_to_use: This metric is helpful in understanding general network issues outside of CockroachDB that could be impacting the user’s workload.
+      how_to_use: This metric is helpful in understanding general network issues outside of CockroachDB that could be impacting the user's workload.
       essential: true
     - name: rpc.connection.failures
       exported_name: rpc_connection_failures
@@ -190,6 +190,43 @@ layers:
       aggregation: AVG
       derivative: NON_NEGATIVE_DERIVATIVE
       how_to_use: See Description.
+      essential: true
+    - name: rpc.connection.tcp_rtt
+      exported_name: rpc_connection_tcp_rtt
+      description: |
+        Kernel-level TCP round-trip time as measured by the Linux TCP stack.
+
+        This metric reports the smoothed round-trip time (SRTT) as maintained by the
+        kernel's TCP implementation. Unlike application-level RPC latency measurements,
+        this reflects pure network latency without application processing delays or
+        CPU overload effects.
+
+        This metric is only available on Linux and requires access to the underlying
+        TCP socket file descriptors.
+      y_axis_label: Latency
+      type: GAUGE
+      unit: NANOSECONDS
+      aggregation: AVG
+      derivative: NONE
+      how_to_use: This metric provides a more accurate view of network latency compared to application-level measurements, helping distinguish between network issues and application performance problems.
+      essential: true
+    - name: rpc.connection.tcp_rtt_var
+      exported_name: rpc_connection_tcp_rtt_var
+      description: |
+        Kernel-level TCP round-trip time variance as measured by the Linux TCP stack.
+
+        This metric reports the smoothed round-trip time variance (RTTVAR) as maintained
+        by the kernel's TCP implementation. This measures the stability and jitter of the
+        connection latency.
+
+        This metric is only available on Linux and requires access to the underlying
+        TCP socket file descriptors.
+      y_axis_label: Latency Variance
+      type: GAUGE
+      unit: NANOSECONDS
+      aggregation: AVG
+      derivative: NONE
+      how_to_use: High variance indicates unstable network conditions or congestion. Use this in conjunction with tcp_rtt to understand connection quality.
       essential: true
     - name: rpc.connection.unhealthy
       exported_name: rpc_connection_unhealthy

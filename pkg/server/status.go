@@ -2229,14 +2229,11 @@ func (s *systemStatusServer) NetworkConnectivity(
 			return nil, srverrors.ServerError(ctx, err)
 		}
 
-		latencies := s.rpcCtx.RemoteClocks.AllLatencies()
-
 		for _, targetNodeId := range nodeIDs {
 			if sourceNodeID == targetNodeId {
 				continue
 			}
 			peer := serverpb.NetworkConnectivityResponse_Peer{}
-			peer.Latency = latencies[targetNodeId]
 
 			node, err := s.gossip.GetNodeDescriptor(targetNodeId)
 			if err != nil {
@@ -2262,6 +2259,10 @@ func (s *systemStatusServer) NetworkConnectivity(
 			}
 			peer.Address = addr.String()
 			peer.Locality = &node.Locality
+
+			labelVals := []string{targetNodeId.String(), addr.String(), rpcbase.SystemClass.String()}
+			m := s.rpcCtx.Metrics()
+			peer.Latency = time.Duration(m.ConnectionTCPRTT.GetChild(labelVals...).Value())
 
 			peers[targetNodeId] = peer
 		}
